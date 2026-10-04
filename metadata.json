@@ -1,0 +1,6 @@
+{
+  "name": "浙江2025中考英语语法填空高频考点速查宝典",
+  "description": "基于浙江2025中考一模二模43篇430空真题全样本考频分析系统，支持宏观分类、细小考点排行榜、折叠解析、真题实战例句与互动练习。",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
