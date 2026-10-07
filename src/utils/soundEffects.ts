@@ -1,19 +1,41 @@
 /**
  * Web Audio API Sound Effects Manager
- * Includes 3-Tier Dynamic Upgraded Correct Audio:
- * - Tier 1 (1-4 Streaks): Standard crisp & cheerful chime
- * - Tier 2 (5-9 Streaks): Upgraded triumphant arcade power-up fanfare (Punchy & energetic)
- * - Tier 3 (10+ Streaks): Ultimate golden orchestral crescendo & stardust shimmer cascade (Ultra satisfying / 超爽)
+ * Includes:
+ * - 3-Tier Dynamic Upgraded Correct Audio (1-4 streaks, 5-9 streaks, 10+ streaks)
+ * - Mistake Shield Protection System (错题保护卡系统):
+ *    * Automatically award +1 Shield Card every 5-streak (每5连对奖励1张保护卡)
+ *    * Manual addition/management of shield cards
+ *    * Automatically absorbs mistake, plays protective forcefield sound, preserves streak!
+ * - Shield Acquired Sound & Shield Absorption Forcefield Sound
  * - Incorrect: Gentle regretful sigh tone
  */
 
+export interface AnswerResult {
+  isCorrect: boolean;
+  streak: number;
+  tier: number;
+  shieldAwarded: boolean;
+  shieldUsed: boolean;
+  shieldsRemaining: number;
+}
+
+export type ShieldEvent =
+  | { type: 'earned'; streak: number; remaining: number }
+  | { type: 'used'; streak: number; remaining: number }
+  | { type: 'manual_add'; amount: number; remaining: number };
+
 type StreakListener = (streak: number) => void;
+type ShieldListener = (shields: number) => void;
+type ShieldEventListener = (event: ShieldEvent) => void;
 
 class SoundEffectsManager {
   private ctx: AudioContext | null = null;
   private enabled: boolean = true;
   private currentStreak: number = 0;
-  private listeners: Set<StreakListener> = new Set();
+  private shields: number = 2; // Default 2 starter shields
+  private streakListeners: Set<StreakListener> = new Set();
+  private shieldListeners: Set<ShieldListener> = new Set();
+  private shieldEventListeners: Set<ShieldEventListener> = new Set();
 
   constructor() {
     try {
@@ -27,9 +49,16 @@ class SoundEffectsManager {
       if (savedStreak) {
         this.currentStreak = parseInt(savedStreak, 10) || 0;
       }
+      const savedShields = localStorage.getItem('zj_shield_cards');
+      if (savedShields !== null) {
+        this.shields = Math.max(0, parseInt(savedShields, 10) || 0);
+      } else {
+        this.shields = 2; // Starter 2 cards
+      }
     } catch {
       this.enabled = true;
       this.currentStreak = 0;
+      this.shields = 2;
     }
   }
 
@@ -64,16 +93,77 @@ class SoundEffectsManager {
     this.notifyStreak();
   }
 
+  public getShields(): number {
+    return this.shields;
+  }
+
+  public setShields(val: number) {
+    this.shields = Math.max(0, val);
+    try {
+      localStorage.setItem('zj_shield_cards', String(this.shields));
+    } catch {}
+    this.notifyShields();
+  }
+
+  /**
+   * Manually add shield cards
+   */
+  public addShield(amount: number = 1): number {
+    this.shields += Math.max(1, amount);
+    try {
+      localStorage.setItem('zj_shield_cards', String(this.shields));
+    } catch {}
+    this.notifyShields();
+    this.notifyShieldEvent({
+      type: 'manual_add',
+      amount,
+      remaining: this.shields,
+    });
+    this.playShieldEarned();
+    return this.shields;
+  }
+
   public subscribeStreak(listener: StreakListener): () => void {
-    this.listeners.add(listener);
+    this.streakListeners.add(listener);
     listener(this.currentStreak);
-    return () => this.listeners.delete(listener);
+    return () => this.streakListeners.delete(listener);
+  }
+
+  public subscribeShields(listener: ShieldListener): () => void {
+    this.shieldListeners.add(listener);
+    listener(this.shields);
+    return () => this.shieldListeners.delete(listener);
+  }
+
+  public subscribeShieldEvents(listener: ShieldEventListener): () => void {
+    this.shieldEventListeners.add(listener);
+    return () => this.shieldEventListeners.delete(listener);
   }
 
   private notifyStreak() {
-    this.listeners.forEach((fn) => {
+    this.streakListeners.forEach((fn) => {
       try {
         fn(this.currentStreak);
+      } catch (e) {
+        console.error(e);
+      }
+    });
+  }
+
+  private notifyShields() {
+    this.shieldListeners.forEach((fn) => {
+      try {
+        fn(this.shields);
+      } catch (e) {
+        console.error(e);
+      }
+    });
+  }
+
+  private notifyShieldEvent(event: ShieldEvent) {
+    this.shieldEventListeners.forEach((fn) => {
+      try {
+        fn(event);
       } catch (e) {
         console.error(e);
       }
@@ -97,16 +187,35 @@ class SoundEffectsManager {
   }
 
   /**
-   * Main entry point when user answers a question in quiz or redo
-   * Handles streak progression and triggers the corresponding tier sound.
+   * Main entry point when answering a question:
+   * - If correct: increment streak, check tier audio, award +1 shield card every 5 streak!
+   * - If incorrect:
+   *     - If shields > 0: consume 1 shield, play forcefield deflection sound, preserve streak!
+   *     - If shields == 0: reset streak to 0, play regret sound.
    */
-  public playAnswerResult(isCorrect: boolean): { isCorrect: boolean; streak: number; tier: number } {
+  public playAnswerResult(isCorrect: boolean): AnswerResult {
     if (isCorrect) {
       this.currentStreak += 1;
       try {
         localStorage.setItem('zj_sound_streak', String(this.currentStreak));
       } catch {}
       this.notifyStreak();
+
+      // Check if user earned a shield card (every 5-streak: 5, 10, 15, 20...)
+      let shieldAwarded = false;
+      if (this.currentStreak > 0 && this.currentStreak % 5 === 0) {
+        this.shields += 1;
+        shieldAwarded = true;
+        try {
+          localStorage.setItem('zj_shield_cards', String(this.shields));
+        } catch {}
+        this.notifyShields();
+        this.notifyShieldEvent({
+          type: 'earned',
+          streak: this.currentStreak,
+          remaining: this.shields,
+        });
+      }
 
       let tier = 1;
       if (this.currentStreak >= 10) {
@@ -119,15 +228,177 @@ class SoundEffectsManager {
         tier = 1;
         this.playCorrect();
       }
-      return { isCorrect: true, streak: this.currentStreak, tier };
+
+      return {
+        isCorrect: true,
+        streak: this.currentStreak,
+        tier,
+        shieldAwarded,
+        shieldUsed: false,
+        shieldsRemaining: this.shields,
+      };
     } else {
-      this.currentStreak = 0;
-      try {
-        localStorage.setItem('zj_sound_streak', '0');
-      } catch {}
-      this.notifyStreak();
-      this.playIncorrect();
-      return { isCorrect: false, streak: 0, tier: 0 };
+      // User made a mistake! Check if shield card protects them
+      if (this.shields > 0) {
+        this.shields -= 1;
+        try {
+          localStorage.setItem('zj_shield_cards', String(this.shields));
+        } catch {}
+        this.notifyShields();
+        this.notifyShieldEvent({
+          type: 'used',
+          streak: this.currentStreak,
+          remaining: this.shields,
+        });
+
+        // Play protective forcefield sound!
+        this.playShieldAbsorb();
+
+        // Streak is preserved!
+        return {
+          isCorrect: false,
+          streak: this.currentStreak,
+          tier: 0,
+          shieldAwarded: false,
+          shieldUsed: true,
+          shieldsRemaining: this.shields,
+        };
+      } else {
+        // No shields: streak resets to 0
+        this.currentStreak = 0;
+        try {
+          localStorage.setItem('zj_sound_streak', '0');
+        } catch {}
+        this.notifyStreak();
+        this.playIncorrect();
+
+        return {
+          isCorrect: false,
+          streak: 0,
+          tier: 0,
+          shieldAwarded: false,
+          shieldUsed: false,
+          shieldsRemaining: 0,
+        };
+      }
+    }
+  }
+
+  /**
+   * Sound effect when a shield card is earned or added
+   * (Sparkling holy/crystallized shield chime)
+   */
+  public playShieldEarned() {
+    if (!this.enabled) return;
+    const ctx = this.getContext();
+    if (!ctx) return;
+
+    try {
+      const now = ctx.currentTime;
+      // D-Major sparkling chime arpeggio: D5, F#5, A5, D6, F#6, A6
+      const pitches = [587.33, 739.99, 880.0, 1174.66, 1479.98, 1760.0];
+
+      pitches.forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        osc.type = 'sine';
+        const t = now + i * 0.05;
+        osc.frequency.setValueAtTime(freq, t);
+
+        gain.gain.setValueAtTime(0, t);
+        gain.gain.linearRampToValueAtTime(0.2, t + 0.015);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.start(t);
+        osc.stop(t + 0.42);
+      });
+
+      // Protective dome resonance
+      const dome = ctx.createOscillator();
+      const domeGain = ctx.createGain();
+      dome.type = 'triangle';
+      dome.frequency.setValueAtTime(587.33, now + 0.15); // D5
+      domeGain.gain.setValueAtTime(0, now + 0.15);
+      domeGain.gain.linearRampToValueAtTime(0.18, now + 0.2);
+      domeGain.gain.exponentialRampToValueAtTime(0.001, now + 0.7);
+      dome.connect(domeGain);
+      domeGain.connect(ctx.destination);
+      dome.start(now + 0.15);
+      dome.stop(now + 0.72);
+    } catch (e) {
+      console.warn('Audio playback error', e);
+    }
+  }
+
+  /**
+   * Sound effect when a shield card absorbs a mistake & preserves streak!
+   * (High-tech crystalline forcefield deflection + warm protective energy swell)
+   */
+  public playShieldAbsorb() {
+    if (!this.enabled) return;
+    const ctx = this.getContext();
+    if (!ctx) return;
+
+    try {
+      const now = ctx.currentTime;
+
+      // 1. Glassy shield deflection ping (high metallic strike)
+      const ping = ctx.createOscillator();
+      const pingGain = ctx.createGain();
+      ping.type = 'sine';
+      ping.frequency.setValueAtTime(1760.0, now); // A6
+      ping.frequency.exponentialRampToValueAtTime(1174.66, now + 0.1); // D6
+      pingGain.gain.setValueAtTime(0, now);
+      pingGain.gain.linearRampToValueAtTime(0.25, now + 0.01);
+      pingGain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+      ping.connect(pingGain);
+      pingGain.connect(ctx.destination);
+      ping.start(now);
+      ping.stop(now + 0.36);
+
+      // 2. Protective Forcefield Energy Swell (A3 -> E4 -> A4)
+      const shieldSwell = [220.0, 329.63, 440.0, 659.25];
+      shieldSwell.forEach((freq, idx) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        osc.type = idx === 0 ? 'triangle' : 'sine';
+        osc.frequency.setValueAtTime(freq, now + 0.04);
+
+        gain.gain.setValueAtTime(0, now + 0.04);
+        gain.gain.linearRampToValueAtTime(0.2, now + 0.09);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.75);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.start(now + 0.04);
+        osc.stop(now + 0.76);
+      });
+
+      // 3. Gentle harmonic reassurance bell (D6 + F#6)
+      [1174.66, 1479.98].forEach((f, i) => {
+        const bell = ctx.createOscillator();
+        const bellGain = ctx.createGain();
+        bell.type = 'sine';
+        bell.frequency.setValueAtTime(f, now + 0.2 + i * 0.06);
+
+        bellGain.gain.setValueAtTime(0, now + 0.2 + i * 0.06);
+        bellGain.gain.linearRampToValueAtTime(0.16, now + 0.22 + i * 0.06);
+        bellGain.gain.exponentialRampToValueAtTime(0.001, now + 0.65 + i * 0.06);
+
+        bell.connect(bellGain);
+        bellGain.connect(ctx.destination);
+
+        bell.start(now + 0.2 + i * 0.06);
+        bell.stop(now + 0.68 + i * 0.06);
+      });
+    } catch (e) {
+      console.warn('Audio playback error', e);
     }
   }
 
@@ -197,7 +468,6 @@ class SoundEffectsManager {
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
 
-        // Blend sine and slight triangle for punchy game timbre
         osc.type = i % 2 === 0 ? 'sine' : 'triangle';
         const startTime = now + i * 0.042;
         osc.frequency.setValueAtTime(freq, startTime);
@@ -221,10 +491,9 @@ class SoundEffectsManager {
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
 
-        osc.type = idx === 0 ? 'triangle' : 'sine'; // Deep foundation on bass
+        osc.type = idx === 0 ? 'triangle' : 'sine';
         osc.frequency.setValueAtTime(freq, chordTime);
 
-        // Rich lingering resonance
         const vol = idx === 0 ? 0.25 : 0.18;
         gain.gain.setValueAtTime(0, chordTime);
         gain.gain.linearRampToValueAtTime(vol, chordTime + 0.03);
@@ -270,12 +539,12 @@ class SoundEffectsManager {
     try {
       const now = ctx.currentTime;
 
-      // 1. Sub-bass foundation impact (deep satisfying thud)
+      // 1. Sub-bass foundation impact
       const sub = ctx.createOscillator();
       const subGain = ctx.createGain();
       sub.type = 'triangle';
-      sub.frequency.setValueAtTime(130.81, now); // C3
-      sub.frequency.exponentialRampToValueAtTime(65.41, now + 0.35); // drops to C2
+      sub.frequency.setValueAtTime(130.81, now);
+      sub.frequency.exponentialRampToValueAtTime(65.41, now + 0.35);
       subGain.gain.setValueAtTime(0, now);
       subGain.gain.linearRampToValueAtTime(0.3, now + 0.02);
       subGain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
@@ -284,7 +553,7 @@ class SoundEffectsManager {
       sub.start(now);
       sub.stop(now + 0.52);
 
-      // 2. Fast grand harp crescendo (12-note ascending burst, 0s ~ 0.4s)
+      // 2. Fast grand harp crescendo (12-note ascending burst)
       const grandScale = [
         261.63, // C4
         329.63, // E4
@@ -310,7 +579,6 @@ class SoundEffectsManager {
         const startTime = now + i * 0.03;
         osc.frequency.setValueAtTime(freq, startTime);
 
-        // Escalating volume crescendo
         const peakVol = 0.15 + (i / grandScale.length) * 0.15;
         gain.gain.setValueAtTime(0, startTime);
         gain.gain.linearRampToValueAtTime(peakVol, startTime + 0.015);
@@ -323,30 +591,20 @@ class SoundEffectsManager {
         osc.stop(startTime + 0.34);
       });
 
-      // 3. The Grand Golden Major Chord Hit (now + 0.42s)
+      // 3. The Grand Golden Major Chord Hit
       const chordTime = now + 0.42;
       const megaChordPitches = [
-        130.81, // C3
-        261.63, // C4
-        392.0, // G4
-        523.25, // C5
-        659.25, // E5
-        783.99, // G5
-        1046.5, // C6
-        1318.51, // E6
-        1567.98, // G6
-        2093.0, // C7
+        130.81, 261.63, 392.0, 523.25, 659.25, 783.99, 1046.5, 1318.51, 1567.98, 2093.0,
       ];
 
       megaChordPitches.forEach((freq, idx) => {
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
 
-        // Slight detune for majestic choral fullness
         osc.type = idx < 2 ? 'triangle' : 'sine';
         osc.frequency.setValueAtTime(freq, chordTime);
         if (idx >= 3) {
-          osc.detune.setValueAtTime((idx % 2 === 0 ? 4 : -4), chordTime);
+          osc.detune.setValueAtTime(idx % 2 === 0 ? 4 : -4, chordTime);
         }
 
         const vol = idx < 2 ? 0.25 : 0.15;
@@ -361,14 +619,14 @@ class SoundEffectsManager {
         osc.stop(chordTime + 1.15);
       });
 
-      // 4. Cascading Shower of Stardust Chimes (sparkling golden droplets, 0.5s ~ 1.0s)
+      // 4. Cascading Shower of Stardust Chimes
       const sparkles = [
-        { f: 1567.98, delay: 0.52 }, // G6
-        { f: 1975.53, delay: 0.6 }, // B6
-        { f: 2093.0, delay: 0.68 }, // C7
-        { f: 2637.02, delay: 0.76 }, // E7
-        { f: 3135.96, delay: 0.84 }, // G7
-        { f: 4186.01, delay: 0.92 }, // C8 ultra sparkle!
+        { f: 1567.98, delay: 0.52 },
+        { f: 1975.53, delay: 0.6 },
+        { f: 2093.0, delay: 0.68 },
+        { f: 2637.02, delay: 0.76 },
+        { f: 3135.96, delay: 0.84 },
+        { f: 4186.01, delay: 0.92 },
       ];
 
       sparkles.forEach((s) => {
@@ -394,7 +652,7 @@ class SoundEffectsManager {
   }
 
   /**
-   * Gentle, sympathetic descending sigh tone on mistake
+   * Gentle, sympathetic descending sigh tone on mistake (when no shield remains)
    */
   public playIncorrect() {
     if (!this.enabled) return;

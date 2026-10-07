@@ -19,6 +19,8 @@ import {
   Zap,
   Music,
   RotateCcw,
+  Shield,
+  Plus,
 } from 'lucide-react';
 import { soundManager } from '../utils/soundEffects';
 import { EXAM_STATISTICS } from '../data/grammarData';
@@ -74,13 +76,21 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const [isSoundEnabled, setIsSoundEnabled] = useState(() => soundManager.isEnabled());
   const [streak, setStreak] = useState(() => soundManager.getStreak());
+  const [shields, setShields] = useState(() => soundManager.getShields());
   const [showSoundMenu, setShowSoundMenu] = useState(false);
   const soundMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    return soundManager.subscribeStreak((newStreak) => {
+    const unsubStreak = soundManager.subscribeStreak((newStreak) => {
       setStreak(newStreak);
     });
+    const unsubShields = soundManager.subscribeShields((newShields) => {
+      setShields(newShields);
+    });
+    return () => {
+      unsubStreak();
+      unsubShields();
+    };
   }, []);
 
   useEffect(() => {
@@ -190,6 +200,22 @@ export const Header: React.FC<HeaderProps> = ({
                   <span>· 正确率: <strong className="text-amber-300">{accuracyRate}%</strong></span>
                 </div>
               )}
+
+              {/* Shield Cards status in top banner */}
+              <div className="flex items-center gap-1.5 bg-white/10 hover:bg-white/20 border border-white/15 px-2.5 py-1 rounded-lg ml-auto sm:ml-0">
+                <Shield className={`w-3.5 h-3.5 ${shields > 0 ? 'text-cyan-300 fill-cyan-400/40 animate-pulse' : 'text-slate-400'}`} />
+                <span className="text-slate-200">
+                  错题保护卡: <strong className="text-cyan-300 font-black">{shields}</strong> 张
+                </span>
+                <button
+                  onClick={() => soundManager.addShield(1)}
+                  className="ml-1 bg-cyan-400 hover:bg-cyan-300 text-slate-950 font-bold px-1.5 py-0.5 rounded text-[11px] flex items-center gap-0.5 active:scale-95 transition-transform"
+                  title="手动补充 1 张错题保护卡"
+                >
+                  <Plus className="w-2.5 h-2.5 stroke-[3]" />
+                  <span>加卡</span>
+                </button>
+              </div>
             </div>
 
             {lastActive && onResumeLast && (
@@ -337,6 +363,43 @@ export const Header: React.FC<HeaderProps> = ({
               </div>
             )}
 
+            {/* Mistake Protection Shield Cards Widget */}
+            <div className="flex items-center bg-cyan-50 dark:bg-cyan-950/60 border border-cyan-200 dark:border-cyan-800 rounded-lg p-0.5 text-xs">
+              <div
+                className="px-2 py-1 font-bold text-cyan-800 dark:text-cyan-200 flex items-center gap-1.5 cursor-pointer select-none"
+                title={`当前拥有 ${shields} 张错题保护卡。每连对 5 题自动获得 1 张；做错题时自动消耗 1 张抵消失误，力保连对不中断！`}
+                onClick={() => soundManager.playShieldEarned()}
+              >
+                <Shield
+                  className={`w-3.5 h-3.5 ${
+                    shields > 0
+                      ? 'text-cyan-600 dark:text-cyan-400 fill-cyan-400/40 animate-pulse'
+                      : 'text-slate-400'
+                  }`}
+                />
+                <span>
+                  保护卡:{' '}
+                  <strong
+                    className={
+                      shields > 0
+                        ? 'text-cyan-700 dark:text-cyan-300 font-black'
+                        : 'text-slate-400'
+                    }
+                  >
+                    {shields}
+                  </strong>
+                </span>
+              </div>
+              <button
+                onClick={() => soundManager.addShield(1)}
+                className="px-2 py-1 bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded-md flex items-center gap-0.5 transition-all active:scale-95 shadow-xs"
+                title="手动补充 1 张错题保护卡"
+              >
+                <Plus className="w-3 h-3 stroke-[3]" />
+                <span>补卡</span>
+              </button>
+            </div>
+
             {/* Sound Effects Toggle & Audition Menu */}
             <div className="relative" ref={soundMenuRef}>
               <div className="flex items-center">
@@ -431,6 +494,59 @@ export const Header: React.FC<HeaderProps> = ({
                     <span>💔 做错遗憾叹气</span>
                     <span className="text-[10px] text-slate-400">温柔提醒</span>
                   </button>
+
+                  {/* Shield Sounds & Management */}
+                  <div className="pt-1.5 border-t border-slate-100 dark:border-slate-800 space-y-1">
+                    <div className="flex items-center justify-between px-2 text-[11px] font-bold text-cyan-700 dark:text-cyan-300">
+                      <span className="flex items-center gap-1">
+                        <Shield className="w-3 h-3 text-cyan-500" /> 保护卡: {shields} 张
+                      </span>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => soundManager.addShield(1)}
+                          className="bg-cyan-100 dark:bg-cyan-950 hover:bg-cyan-200 text-cyan-700 dark:text-cyan-300 px-1.5 py-0.5 rounded font-black text-[10px]"
+                          title="手动+1张保护卡"
+                        >
+                          +1卡
+                        </button>
+                        <button
+                          onClick={() => soundManager.addShield(5)}
+                          className="bg-cyan-100 dark:bg-cyan-950 hover:bg-cyan-200 text-cyan-700 dark:text-cyan-300 px-1.5 py-0.5 rounded font-black text-[10px]"
+                          title="手动+5张保护卡"
+                        >
+                          +5卡
+                        </button>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        soundManager.setEnabled(true);
+                        setIsSoundEnabled(true);
+                        soundManager.playShieldEarned();
+                      }}
+                      className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-cyan-50 dark:hover:bg-cyan-950/40 flex items-center justify-between group"
+                    >
+                      <span className="text-cyan-700 dark:text-cyan-300 font-semibold flex items-center gap-1">
+                        <Shield className="w-3 h-3 text-cyan-500" /> 试听保护卡获得音效
+                      </span>
+                      <span className="text-[10px] text-cyan-500">晶体光环</span>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        soundManager.setEnabled(true);
+                        setIsSoundEnabled(true);
+                        soundManager.playShieldAbsorb();
+                      }}
+                      className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-teal-50 dark:hover:bg-teal-950/40 flex items-center justify-between group"
+                    >
+                      <span className="text-teal-700 dark:text-teal-300 font-semibold flex items-center gap-1">
+                        <Shield className="w-3 h-3 text-teal-500" /> 试听保护卡生效力场
+                      </span>
+                      <span className="text-[10px] text-teal-500">抵消失误</span>
+                    </button>
+                  </div>
 
                   {streak > 0 && (
                     <div className="pt-1 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between px-2 text-[11px]">

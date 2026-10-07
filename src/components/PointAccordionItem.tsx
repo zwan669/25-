@@ -15,6 +15,7 @@ import {
   ListFilter,
   BookOpen,
   RotateCcw,
+  Shield,
 } from 'lucide-react';
 
 interface PointAccordionItemProps {
@@ -54,6 +55,7 @@ export const PointAccordionItem: React.FC<PointAccordionItemProps> = ({
 
   // Local state for revealing answers when in quiz mode
   const [revealedExamples, setRevealedExamples] = useState<Record<string, boolean>>({});
+  const [shieldProtectedIds, setShieldProtectedIds] = useState<Record<string, boolean>>({});
   const [userAnswers, setUserAnswers] = useState<Record<string, string>>(() => {
     const initial: Record<string, string> = {};
     point.examples.forEach((ex) => {
@@ -107,8 +109,17 @@ export const PointAccordionItem: React.FC<PointAccordionItemProps> = ({
       point.name
     );
 
-    // Play corresponding sound effect (with 5-streak and 10-streak upgrade tiers)
-    soundManager.playAnswerResult(isCorrect);
+    // Play corresponding sound effect (with 5-streak and 10-streak upgrade tiers, and shield protection)
+    const result = soundManager.playAnswerResult(isCorrect);
+    if (result.shieldUsed) {
+      setShieldProtectedIds((prev) => ({ ...prev, [exId]: true }));
+    } else if (isCorrect) {
+      setShieldProtectedIds((prev) => {
+        const next = { ...prev };
+        delete next[exId];
+        return next;
+      });
+    }
 
     if (!isCorrect) {
       // If answer is incorrect or empty when checking, automatically record to wrong questions notebook!
@@ -526,6 +537,12 @@ export const PointAccordionItem: React.FC<PointAccordionItemProps> = ({
                               <BookOpen className="w-3 h-3" /> 已在错题本
                             </span>
                           )}
+
+                          {shieldProtectedIds[ex.id] && (
+                            <span className="bg-cyan-100 dark:bg-cyan-950 text-cyan-800 dark:text-cyan-200 border border-cyan-300/60 px-2 py-0.5 rounded text-[11px] font-bold flex items-center gap-1">
+                              <Shield className="w-3 h-3 text-cyan-500 fill-cyan-400/40" /> 保护卡已抵消·连对保全
+                            </span>
+                          )}
                         </div>
 
                         {/* Top-right Tag: In quiz mode, DO NOT show ex.tag until answer is revealed! */}
@@ -629,11 +646,15 @@ export const PointAccordionItem: React.FC<PointAccordionItemProps> = ({
                               className={`text-xs font-semibold px-2 py-0.5 rounded-full flex items-center gap-1 ${
                                 isCorrect
                                   ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
+                                  : shieldProtectedIds[ex.id]
+                                  ? 'bg-cyan-100 text-cyan-800 dark:bg-cyan-950 dark:text-cyan-200 border border-cyan-300/60'
                                   : 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300'
                               }`}
                             >
                               {isCorrect
                                 ? '✅ 回答正确！'
+                                : shieldProtectedIds[ex.id]
+                                ? '🛡️ 错题保护卡已抵消本次失误，连对已保全！'
                                 : '❌ 答错了，已自动收入错题本！'}
                             </span>
                           )}
