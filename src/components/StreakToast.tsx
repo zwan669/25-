@@ -80,7 +80,7 @@ export const StreakToast: React.FC = () => {
   if (!toast) return null;
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 animate-bounce-subtle pointer-events-auto max-w-md w-full px-4 sm:px-0">
+    <div className="fixed top-20 right-4 sm:right-6 z-50 animate-fadeIn pointer-events-auto max-w-md w-full px-4 sm:px-0">
       <div
         className={`p-4 sm:p-5 rounded-2xl shadow-2xl border flex items-center gap-4 transition-all duration-300 ${
           toast.type === 'streak10'

@@ -13,6 +13,7 @@ import { PitfallsModal } from './components/PitfallsModal';
 import { ExamStrategyModal } from './components/ExamStrategyModal';
 import { MistakesNotebookModal } from './components/MistakesNotebookModal';
 import { StreakToast } from './components/StreakToast';
+import { FloatingStatsHud } from './components/FloatingStatsHud';
 import { BookOpen, GraduationCap, Sparkles } from 'lucide-react';
 
 export default function App() {
@@ -402,6 +403,11 @@ export default function App() {
         />
       )}
       <StreakToast />
+      <FloatingStatsHud
+        correctCount={correctCount}
+        practicedCount={practicedCount}
+        totalQuestions={430}
+      />
     </div>
   );
 }
