@@ -57,3 +57,19 @@ export interface WrongQuestionRecord {
   userAnswer: string;
   addedAt: number;
 }
+
+export interface PracticeRecord {
+  questionId: string;
+  pointId: string;
+  userAnswer: string;
+  isCorrect: boolean;
+  timestamp: number;
+}
+
+export interface LastActiveLocation {
+  questionId: string;
+  pointId: string;
+  pointName: string;
+  source: string;
+  timestamp: number;
+}

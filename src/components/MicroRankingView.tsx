@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { MICRO_POINTS } from '../data/grammarData';
-import { MicroPoint, WrongQuestionRecord } from '../types/grammar';
+import { MicroPoint, WrongQuestionRecord, PracticeRecord } from '../types/grammar';
 import { PointAccordionItem } from './PointAccordionItem';
 import { Trophy, TrendingUp, Filter, ArrowUpDown } from 'lucide-react';
 
@@ -15,6 +15,10 @@ interface MicroRankingViewProps {
   onAddWrongQuestion: (record: WrongQuestionRecord) => void;
   wrongQuestionIds: Set<string>;
   onRemoveWrongQuestion: (id: string) => void;
+  practiceRecords: Record<string, PracticeRecord>;
+  onRecordPractice: (record: PracticeRecord, source: string, pointName: string) => void;
+  onResetPractice: (questionId: string) => void;
+  highlightedQuestionId?: string | null;
 }
 
 export const MicroRankingView: React.FC<MicroRankingViewProps> = ({
@@ -28,6 +32,10 @@ export const MicroRankingView: React.FC<MicroRankingViewProps> = ({
   onAddWrongQuestion,
   wrongQuestionIds,
   onRemoveWrongQuestion,
+  practiceRecords,
+  onRecordPractice,
+  onResetPractice,
+  highlightedQuestionId,
 }) => {
   const [sortOption, setSortOption] = useState<'frequency' | 'rank' | 'difficulty'>('frequency');
 
@@ -36,7 +44,11 @@ export const MicroRankingView: React.FC<MicroRankingViewProps> = ({
     let result = [...MICRO_POINTS];
 
     // Filter by quick filter
-    if (selectedFilter === 'has_wrong') {
+    if (selectedFilter === 'practiced') {
+      result = result.filter((p) => p.examples.some((ex) => !!practiceRecords[ex.id]));
+    } else if (selectedFilter === 'unpracticed') {
+      result = result.filter((p) => p.examples.some((ex) => !practiceRecords[ex.id]));
+    } else if (selectedFilter === 'has_wrong') {
       result = result.filter((p) => p.examples.some((ex) => wrongQuestionIds.has(ex.id)));
     } else if (selectedFilter === 'mastered') {
       result = result.filter((p) => masteredIds.has(p.id));
@@ -194,6 +206,10 @@ export const MicroRankingView: React.FC<MicroRankingViewProps> = ({
                   onAddWrongQuestion={onAddWrongQuestion}
                   wrongQuestionIds={wrongQuestionIds}
                   onRemoveWrongQuestion={onRemoveWrongQuestion}
+                  practiceRecords={practiceRecords}
+                  onRecordPractice={onRecordPractice}
+                  onResetPractice={onResetPractice}
+                  highlightedQuestionId={highlightedQuestionId}
                 />
               </div>
             );

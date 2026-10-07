@@ -85,11 +85,7 @@ export const MistakesNotebookModal: React.FC<MistakesNotebookModalProps> = ({
     const val = redoInputs[id]?.trim() || '';
     if (!val) return;
     const isCorrect = checkAnswerCorrect(val, actualAns);
-    if (isCorrect) {
-      soundManager.playCorrect();
-    } else {
-      soundManager.playIncorrect();
-    }
+    soundManager.playAnswerResult(isCorrect);
   };
 
   const toggleReveal = (id: string) => {

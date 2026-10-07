@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from 'react';
-import { MicroPoint, WrongQuestionRecord } from '../types/grammar';
+import React, { useState, useMemo, useEffect } from 'react';
+import { MicroPoint, WrongQuestionRecord, PracticeRecord } from '../types/grammar';
 import { soundManager } from '../utils/soundEffects';
 import {
   ChevronDown,
@@ -14,6 +14,7 @@ import {
   Sparkles,
   ListFilter,
   BookOpen,
+  RotateCcw,
 } from 'lucide-react';
 
 interface PointAccordionItemProps {
@@ -26,6 +27,10 @@ interface PointAccordionItemProps {
   onAddWrongQuestion: (record: WrongQuestionRecord) => void;
   wrongQuestionIds: Set<string>;
   onRemoveWrongQuestion: (id: string) => void;
+  practiceRecords: Record<string, PracticeRecord>;
+  onRecordPractice: (record: PracticeRecord, source: string, pointName: string) => void;
+  onResetPractice: (questionId: string) => void;
+  highlightedQuestionId?: string | null;
 }
 
 export const PointAccordionItem: React.FC<PointAccordionItemProps> = ({
@@ -38,6 +43,10 @@ export const PointAccordionItem: React.FC<PointAccordionItemProps> = ({
   onAddWrongQuestion,
   wrongQuestionIds,
   onRemoveWrongQuestion,
+  practiceRecords,
+  onRecordPractice,
+  onResetPractice,
+  highlightedQuestionId,
 }) => {
   // Whether to show all examples or only the first batch (e.g. 6)
   const [showAllQuestions, setShowAllQuestions] = useState(true);
@@ -45,7 +54,30 @@ export const PointAccordionItem: React.FC<PointAccordionItemProps> = ({
 
   // Local state for revealing answers when in quiz mode
   const [revealedExamples, setRevealedExamples] = useState<Record<string, boolean>>({});
-  const [userAnswers, setUserAnswers] = useState<Record<string, string>>({});
+  const [userAnswers, setUserAnswers] = useState<Record<string, string>>(() => {
+    const initial: Record<string, string> = {};
+    point.examples.forEach((ex) => {
+      if (practiceRecords[ex.id]?.userAnswer) {
+        initial[ex.id] = practiceRecords[ex.id].userAnswer;
+      }
+    });
+    return initial;
+  });
+
+  // Keep userAnswers synchronized with practiceRecords updates
+  useEffect(() => {
+    setUserAnswers((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      point.examples.forEach((ex) => {
+        if (practiceRecords[ex.id]?.userAnswer && !next[ex.id]) {
+          next[ex.id] = practiceRecords[ex.id].userAnswer;
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [practiceRecords, point.examples]);
 
   // Helper for flexible checking of answers (supports "who / that", "because / as" etc.)
   const isAnswerMatching = (input: string, target: string) => {
@@ -62,11 +94,23 @@ export const PointAccordionItem: React.FC<PointAccordionItemProps> = ({
     const userAns = userAnswers[exId]?.trim() || '';
     const isCorrect = isAnswerMatching(userAns, ex.answer);
 
-    // Play corresponding sound effect
-    if (isCorrect) {
-      soundManager.playCorrect();
-    } else {
-      soundManager.playIncorrect();
+    // Save practice record
+    onRecordPractice(
+      {
+        questionId: ex.id,
+        pointId: point.id,
+        userAnswer: userAns,
+        isCorrect,
+        timestamp: Date.now(),
+      },
+      ex.source,
+      point.name
+    );
+
+    // Play corresponding sound effect (with 5-streak and 10-streak upgrade tiers)
+    soundManager.playAnswerResult(isCorrect);
+
+    if (!isCorrect) {
       // If answer is incorrect or empty when checking, automatically record to wrong questions notebook!
       onAddWrongQuestion({
         id: ex.id,
@@ -108,6 +152,19 @@ export const PointAccordionItem: React.FC<PointAccordionItemProps> = ({
       allRev[ex.id] = true;
       const userAns = userAnswers[ex.id]?.trim() || '';
       const isCorrect = isAnswerMatching(userAns, ex.answer);
+      if (userAns) {
+        onRecordPractice(
+          {
+            questionId: ex.id,
+            pointId: point.id,
+            userAnswer: userAns,
+            isCorrect,
+            timestamp: Date.now(),
+          },
+          ex.source,
+          point.name
+        );
+      }
       if (!isCorrect && userAns) {
         onAddWrongQuestion({
           id: ex.id,
@@ -422,25 +479,48 @@ export const PointAccordionItem: React.FC<PointAccordionItemProps> = ({
                   const userAns = userAnswers[ex.id]?.trim() || '';
                   const isCorrect = isAnswerMatching(userAns, ex.answer);
                   const isInWrongList = wrongQuestionIds.has(ex.id);
+                  const practiced = practiceRecords[ex.id];
+                  const isHighlighted = highlightedQuestionId === ex.id;
 
                   return (
                     <div
                       key={ex.id}
-                      className={`p-3.5 rounded-xl border transition-colors space-y-2.5 ${
-                        isInWrongList
+                      id={`q-${ex.id}`}
+                      className={`p-3.5 rounded-xl border transition-all duration-300 space-y-2.5 ${
+                        isHighlighted
+                          ? 'ring-4 ring-indigo-500 shadow-xl bg-indigo-50/60 dark:bg-indigo-950/50 border-indigo-500 scale-[1.01]'
+                          : isInWrongList
                           ? 'border-rose-300 dark:border-rose-900/60 bg-rose-50/30 dark:bg-rose-950/20'
                           : 'border-slate-200/90 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40'
                       }`}
                     >
                       {/* Example Header */}
                       <div className="flex items-center justify-between text-xs gap-2 flex-wrap">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <span className="bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 font-semibold px-2 py-0.5 rounded">
                             题 #{index + 1}
                           </span>
                           <span className="text-slate-600 dark:text-slate-300 font-medium">
                             {ex.source}
                           </span>
+
+                          {/* Practice Record Status Badge */}
+                          {practiced ? (
+                            <span
+                              className={`px-2 py-0.5 rounded text-[11px] font-bold flex items-center gap-1 ${
+                                practiced.isCorrect
+                                  ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300/60'
+                                  : 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300 border border-rose-300/60'
+                              }`}
+                            >
+                              {practiced.isCorrect ? '✅ 已做·正确' : '❌ 已做·待攻克'}
+                            </span>
+                          ) : (
+                            <span className="bg-slate-100 dark:bg-slate-800 text-slate-400 px-2 py-0.5 rounded text-[11px]">
+                              ⚪ 未做
+                            </span>
+                          )}
+
                           {isInWrongList && (
                             <span className="bg-rose-100 text-rose-700 dark:bg-rose-900/50 dark:text-rose-300 px-2 py-0.5 rounded text-[11px] font-bold flex items-center gap-1">
                               <BookOpen className="w-3 h-3" /> 已在错题本
@@ -493,6 +573,22 @@ export const PointAccordionItem: React.FC<PointAccordionItemProps> = ({
                               </>
                             )}
                           </button>
+
+                          {/* Reset this question button if already done */}
+                          {practiced && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                onResetPractice(ex.id);
+                                setUserAnswers((prev) => ({ ...prev, [ex.id]: '' }));
+                                setRevealedExamples((prev) => ({ ...prev, [ex.id]: false }));
+                              }}
+                              className="px-2 py-1.5 text-xs text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center gap-1"
+                              title="清除此题作答记录，重新自测"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" /> 重做
+                            </button>
+                          )}
 
                           {/* Quick Add/Remove from Mistakes button */}
                           <button

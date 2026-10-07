@@ -5,13 +5,14 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { MICRO_POINTS } from './data/grammarData';
-import { WrongQuestionRecord } from './types/grammar';
+import { WrongQuestionRecord, PracticeRecord, LastActiveLocation } from './types/grammar';
 import { Header } from './components/Header';
 import { MacroView } from './components/MacroView';
 import { MicroRankingView } from './components/MicroRankingView';
 import { PitfallsModal } from './components/PitfallsModal';
 import { ExamStrategyModal } from './components/ExamStrategyModal';
 import { MistakesNotebookModal } from './components/MistakesNotebookModal';
+import { StreakToast } from './components/StreakToast';
 import { BookOpen, GraduationCap, Sparkles } from 'lucide-react';
 
 export default function App() {
@@ -52,6 +53,35 @@ export default function App() {
     return [];
   });
 
+  // Track user answered practice questions in localStorage
+  const [practiceRecords, setPracticeRecords] = useState<Record<string, PracticeRecord>>(() => {
+    try {
+      const saved = localStorage.getItem('zj_practice_records');
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    return {};
+  });
+
+  // Track last active location in localStorage
+  const [lastActiveLocation, setLastActiveLocation] = useState<LastActiveLocation | null>(() => {
+    try {
+      const saved = localStorage.getItem('zj_last_active');
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    return null;
+  });
+
+  // Highlight question ID for jump / locating
+  const [highlightedQuestionId, setHighlightedQuestionId] = useState<string | null>(null);
+
   // Modals
   const [isPitfallsOpen, setIsPitfallsOpen] = useState(false);
   const [isStrategyOpen, setIsStrategyOpen] = useState(false);
@@ -75,10 +105,39 @@ export default function App() {
     }
   }, [wrongQuestions]);
 
+  // Sync practiceRecords to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('zj_practice_records', JSON.stringify(practiceRecords));
+    } catch (e) {
+      console.error(e);
+    }
+  }, [practiceRecords]);
+
+  // Sync lastActiveLocation to localStorage
+  useEffect(() => {
+    if (lastActiveLocation) {
+      try {
+        localStorage.setItem('zj_last_active', JSON.stringify(lastActiveLocation));
+      } catch (e) {
+        console.error(e);
+      }
+    }
+  }, [lastActiveLocation]);
+
   // Set of wrong question IDs for fast lookup
   const wrongQuestionIds = useMemo(() => {
     return new Set(wrongQuestions.map((q) => q.id));
   }, [wrongQuestions]);
+
+  // Practice statistics
+  const practicedCount = useMemo(() => {
+    return Object.keys(practiceRecords).length;
+  }, [practiceRecords]);
+
+  const correctCount = useMemo(() => {
+    return Object.values(practiceRecords).filter((r) => r.isCorrect).length;
+  }, [practiceRecords]);
 
   // Handle adding a wrong question
   const handleAddWrongQuestion = (record: WrongQuestionRecord) => {
@@ -95,6 +154,56 @@ export default function App() {
       }
       return [record, ...prev];
     });
+  };
+
+  // Handle recording a practice submission
+  const handleRecordPractice = (
+    record: PracticeRecord,
+    source: string,
+    pointName: string
+  ) => {
+    setPracticeRecords((prev) => ({
+      ...prev,
+      [record.questionId]: record,
+    }));
+    setLastActiveLocation({
+      questionId: record.questionId,
+      pointId: record.pointId,
+      pointName,
+      source,
+      timestamp: Date.now(),
+    });
+  };
+
+  // Handle resetting practice of a single question
+  const handleResetPractice = (questionId: string) => {
+    setPracticeRecords((prev) => {
+      const next = { ...prev };
+      delete next[questionId];
+      return next;
+    });
+  };
+
+  // Handle resume last active location
+  const handleResumeLastActive = () => {
+    if (!lastActiveLocation) return;
+    setOpenPointIds((prev) => {
+      const next = new Set(prev);
+      next.add(lastActiveLocation.pointId);
+      return next;
+    });
+    setHighlightedQuestionId(lastActiveLocation.questionId);
+
+    setTimeout(() => {
+      const el = document.getElementById(`q-${lastActiveLocation.questionId}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 120);
+
+    setTimeout(() => {
+      setHighlightedQuestionId(null);
+    }, 3500);
   };
 
   // Handle removing a wrong question
@@ -195,6 +304,10 @@ export default function App() {
           onSelectFilter={setSelectedFilter}
           masteredCount={masteredIds.size}
           wrongCount={wrongQuestions.length}
+          practicedCount={practicedCount}
+          correctCount={correctCount}
+          lastActive={lastActiveLocation}
+          onResumeLast={handleResumeLastActive}
         />
 
         {/* Main Content Area: Macro View vs Micro View */}
@@ -211,6 +324,10 @@ export default function App() {
               onAddWrongQuestion={handleAddWrongQuestion}
               wrongQuestionIds={wrongQuestionIds}
               onRemoveWrongQuestion={handleRemoveWrongQuestion}
+              practiceRecords={practiceRecords}
+              onRecordPractice={handleRecordPractice}
+              onResetPractice={handleResetPractice}
+              highlightedQuestionId={highlightedQuestionId}
             />
           ) : (
             <MicroRankingView
@@ -224,6 +341,10 @@ export default function App() {
               onAddWrongQuestion={handleAddWrongQuestion}
               wrongQuestionIds={wrongQuestionIds}
               onRemoveWrongQuestion={handleRemoveWrongQuestion}
+              practiceRecords={practiceRecords}
+              onRecordPractice={handleRecordPractice}
+              onResetPractice={handleResetPractice}
+              highlightedQuestionId={highlightedQuestionId}
             />
           )}
         </main>
@@ -267,17 +388,20 @@ export default function App() {
         </footer>
       </div>
 
-      {/* Guidance & Mistakes Modals */}
+      {/* Guidance & Mistakes Modals & Streak Toast */}
       <PitfallsModal isOpen={isPitfallsOpen} onClose={() => setIsPitfallsOpen(false)} />
       <ExamStrategyModal isOpen={isStrategyOpen} onClose={() => setIsStrategyOpen(false)} />
-      <MistakesNotebookModal
-        isOpen={isMistakesOpen}
-        onClose={() => setIsMistakesOpen(false)}
-        wrongQuestions={wrongQuestions}
-        onRemoveWrongQuestion={handleRemoveWrongQuestion}
-        onClearAll={handleClearAllWrong}
-        onUpdateAnswer={handleUpdateAnswer}
-      />
+      {isMistakesOpen && (
+        <MistakesNotebookModal
+          isOpen={isMistakesOpen}
+          onClose={() => setIsMistakesOpen(false)}
+          wrongQuestions={wrongQuestions}
+          onRemoveWrongQuestion={handleRemoveWrongQuestion}
+          onClearAll={handleClearAllWrong}
+          onUpdateAnswer={handleUpdateAnswer}
+        />
+      )}
+      <StreakToast />
     </div>
   );
 }

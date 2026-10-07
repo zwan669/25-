@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Search,
   X,
@@ -15,9 +15,19 @@ import {
   Filter,
   Volume2,
   VolumeX,
+  Flame,
+  Zap,
+  Music,
+  RotateCcw,
 } from 'lucide-react';
 import { soundManager } from '../utils/soundEffects';
 import { EXAM_STATISTICS } from '../data/grammarData';
+import { LastActiveLocation } from '../types/grammar';
+import {
+  Compass,
+  CheckCheck,
+  History,
+} from 'lucide-react';
 
 interface HeaderProps {
   searchQuery: string;
@@ -35,6 +45,10 @@ interface HeaderProps {
   onSelectFilter: (filter: string) => void;
   masteredCount: number;
   wrongCount: number;
+  practicedCount?: number;
+  correctCount?: number;
+  lastActive?: LastActiveLocation | null;
+  onResumeLast?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -53,8 +67,42 @@ export const Header: React.FC<HeaderProps> = ({
   onSelectFilter,
   masteredCount,
   wrongCount,
+  practicedCount = 0,
+  correctCount = 0,
+  lastActive,
+  onResumeLast,
 }) => {
   const [isSoundEnabled, setIsSoundEnabled] = useState(() => soundManager.isEnabled());
+  const [streak, setStreak] = useState(() => soundManager.getStreak());
+  const [showSoundMenu, setShowSoundMenu] = useState(false);
+  const soundMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    return soundManager.subscribeStreak((newStreak) => {
+      setStreak(newStreak);
+    });
+  }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (soundMenuRef.current && !soundMenuRef.current.contains(e.target as Node)) {
+        setShowSoundMenu(false);
+      }
+    };
+    if (showSoundMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showSoundMenu]);
+
+  const progressPercent = Math.min(
+    100,
+    Math.round((practicedCount / EXAM_STATISTICS.totalBlanks) * 100)
+  );
+  const accuracyRate =
+    practicedCount > 0 ? Math.round((correctCount / practicedCount) * 100) : 0;
 
   return (
     <header className="space-y-5">
@@ -122,6 +170,38 @@ export const Header: React.FC<HeaderProps> = ({
               </div>
               <div className="text-[11px] text-slate-300 mt-0.5">点击进入错题专项自测</div>
             </div>
+          </div>
+
+          {/* Persistent Practice Progress & Last Active Quick Jump Bar */}
+          <div className="pt-3 border-t border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="flex items-center gap-1.5 font-semibold text-slate-200">
+                <CheckCheck className="w-4 h-4 text-emerald-400" />
+                <span>做题记录追踪：</span>
+                <span className="text-white font-bold">
+                  {practicedCount} / {EXAM_STATISTICS.totalBlanks} 空
+                </span>
+                <span className="text-indigo-300">({progressPercent}%)</span>
+              </div>
+
+              {practicedCount > 0 && (
+                <div className="flex items-center gap-2 text-slate-300">
+                  <span>· 正确: <strong className="text-emerald-300">{correctCount}</strong> 题</span>
+                  <span>· 正确率: <strong className="text-amber-300">{accuracyRate}%</strong></span>
+                </div>
+              )}
+            </div>
+
+            {lastActive && onResumeLast && (
+              <button
+                onClick={onResumeLast}
+                className="bg-indigo-500/30 hover:bg-indigo-500/50 border border-indigo-400/40 text-white px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5 transition-all shadow-xs hover:scale-[1.02] shrink-0"
+                title={`上次做到：${lastActive.pointName} (${lastActive.source})`}
+              >
+                <Compass className="w-3.5 h-3.5 text-amber-300 animate-spin-slow" />
+                <span>继续做题：上次停留【{lastActive.pointName.slice(0, 8)}...】</span>
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -225,29 +305,147 @@ export const Header: React.FC<HeaderProps> = ({
               <span>{isQuizMode ? '🎯 自测模式（答案遮罩中）' : '📖 学习模式（答案解析展示）'}</span>
             </button>
 
-            {/* Sound Effects Toggle */}
-            <button
-              onClick={() => {
-                const next = soundManager.toggle();
-                setIsSoundEnabled(next);
-                if (next) soundManager.playCorrect();
-              }}
-              className={`px-2.5 py-1.5 rounded-lg border font-medium flex items-center gap-1 transition-colors ${
-                isSoundEnabled
-                  ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100'
-                  : 'bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-700 hover:text-slate-600'
-              }`}
-              title={isSoundEnabled ? '音效已开启（做对/做错实时音效），点击静音' : '音效已静音，点击开启'}
-            >
-              {isSoundEnabled ? (
-                <Volume2 className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-              ) : (
-                <VolumeX className="w-3.5 h-3.5 text-slate-400" />
+            {/* Live Streak Indicator */}
+            {streak > 0 && (
+              <div
+                className={`px-2.5 py-1.5 rounded-lg border text-xs font-black flex items-center gap-1.5 transition-all shadow-xs ${
+                  streak >= 10
+                    ? 'bg-gradient-to-r from-amber-400 via-yellow-300 to-amber-500 text-slate-950 border-amber-300 ring-2 ring-yellow-400/40 animate-pulse'
+                    : streak >= 5
+                    ? 'bg-gradient-to-r from-orange-500 to-rose-500 text-white border-orange-400'
+                    : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                }`}
+                title={`当前连对 ${streak} 题！${
+                  streak >= 10
+                    ? '已激活 10 连对顶级超爽华丽盛宴音效！'
+                    : streak >= 5
+                    ? '已激活 5 连对爽快升级连击音效！'
+                    : '再连对 ' + (5 - streak) + ' 题即可升级音效！'
+                }`}
+              >
+                {streak >= 10 ? (
+                  <Zap className="w-3.5 h-3.5 fill-slate-950" />
+                ) : (
+                  <Flame className="w-3.5 h-3.5 fill-orange-200" />
+                )}
+                <span>连对 x{streak}</span>
+                {streak >= 10 && (
+                  <span className="text-[10px] bg-slate-950 text-yellow-300 px-1 py-0.2 rounded font-black">
+                    超爽
+                  </span>
+                )}
+              </div>
+            )}
+
+            {/* Sound Effects Toggle & Audition Menu */}
+            <div className="relative" ref={soundMenuRef}>
+              <div className="flex items-center">
+                <button
+                  onClick={() => {
+                    const next = soundManager.toggle();
+                    setIsSoundEnabled(next);
+                    if (next) soundManager.playCorrect();
+                  }}
+                  className={`px-2.5 py-1.5 rounded-l-lg border font-medium flex items-center gap-1 transition-colors ${
+                    isSoundEnabled
+                      ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-700 hover:text-slate-600'
+                  }`}
+                  title={isSoundEnabled ? '音效已开启（做对/做错实时音效），点击静音' : '音效已静音，点击开启'}
+                >
+                  {isSoundEnabled ? (
+                    <Volume2 className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                  ) : (
+                    <VolumeX className="w-3.5 h-3.5 text-slate-400" />
+                  )}
+                  <span className="hidden sm:inline text-xs">
+                    {isSoundEnabled ? '音效' : '静音'}
+                  </span>
+                </button>
+
+                <button
+                  onClick={() => setShowSoundMenu(!showSoundMenu)}
+                  className="px-1.5 py-1.5 rounded-r-lg border-y border-r border-indigo-200 dark:border-indigo-800 bg-indigo-100/70 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200 text-xs flex items-center"
+                  title="试听升级音效 (普通 / 5连对升级 / 10连对封神)"
+                >
+                  <ChevronDown className="w-3 h-3" />
+                </button>
+              </div>
+
+              {/* Sound Audition Menu */}
+              {showSoundMenu && (
+                <div className="absolute right-0 mt-1.5 w-60 bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-800 p-2 z-50 text-xs space-y-1 animate-fadeIn">
+                  <div className="px-2 py-1 font-bold text-slate-500 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                    <span>音效试听（连对升级）</span>
+                    <Music className="w-3.5 h-3.5 text-indigo-500" />
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      soundManager.setEnabled(true);
+                      setIsSoundEnabled(true);
+                      soundManager.playCorrect();
+                    }}
+                    className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center justify-between group"
+                  >
+                    <span className="text-slate-700 dark:text-slate-200">🎵 普通做对 (1-4连对)</span>
+                    <span className="text-[10px] text-slate-400 group-hover:text-indigo-500">清脆和弦</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      soundManager.setEnabled(true);
+                      setIsSoundEnabled(true);
+                      soundManager.playStreak5();
+                    }}
+                    className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-orange-50 dark:hover:bg-orange-950/40 flex items-center justify-between group"
+                  >
+                    <span className="text-orange-700 dark:text-orange-300 font-bold flex items-center gap-1">
+                      <Flame className="w-3 h-3 text-orange-500" /> 5连对升级音效
+                    </span>
+                    <span className="text-[10px] bg-orange-100 dark:bg-orange-900/60 text-orange-700 dark:text-orange-300 px-1.5 py-0.2 rounded font-bold">爽快连击</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      soundManager.setEnabled(true);
+                      setIsSoundEnabled(true);
+                      soundManager.playStreak10();
+                    }}
+                    className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-amber-50 dark:hover:bg-amber-950/40 flex items-center justify-between group"
+                  >
+                    <span className="text-amber-700 dark:text-amber-300 font-extrabold flex items-center gap-1">
+                      <Zap className="w-3 h-3 text-amber-500" /> 10连对封神盛宴
+                    </span>
+                    <span className="text-[10px] bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-200 px-1.5 py-0.2 rounded font-black">超爽顶级</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      soundManager.setEnabled(true);
+                      setIsSoundEnabled(true);
+                      soundManager.playIncorrect();
+                    }}
+                    className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center justify-between text-slate-500"
+                  >
+                    <span>💔 做错遗憾叹气</span>
+                    <span className="text-[10px] text-slate-400">温柔提醒</span>
+                  </button>
+
+                  {streak > 0 && (
+                    <div className="pt-1 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between px-2 text-[11px]">
+                      <span className="text-slate-500">当前连对: {streak}</span>
+                      <button
+                        onClick={() => soundManager.setStreak(0)}
+                        className="text-rose-500 hover:underline flex items-center gap-0.5"
+                      >
+                        <RotateCcw className="w-3 h-3" /> 重置
+                      </button>
+                    </div>
+                  )}
+                </div>
               )}
-              <span className="hidden sm:inline text-xs">
-                {isSoundEnabled ? '音效开' : '静音'}
-              </span>
-            </button>
+            </div>
 
             {/* Accordion Fast Action */}
             <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 rounded-lg p-0.5 border border-slate-200 dark:border-slate-700">
@@ -281,6 +479,8 @@ export const Header: React.FC<HeaderProps> = ({
             { id: 'trap', label: '⚠️ 易错重灾区' },
             { id: 'with_prompt', label: '✅ 有提示词 (66%)' },
             { id: 'without_prompt', label: '🔍 无提示词 (34%)' },
+            { id: 'practiced', label: `📝 已刷题目 (${practicedCount})` },
+            { id: 'unpracticed', label: '⚪ 未刷考点' },
             { id: 'has_wrong', label: `📕 包含错题 (${wrongCount})` },
             { id: 'mastered', label: '已掌握' },
             { id: 'unmastered', label: '待掌握' },

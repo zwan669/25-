@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { MACRO_CATEGORIES } from '../data/grammarData';
-import { MicroPoint, WrongQuestionRecord } from '../types/grammar';
+import { MicroPoint, WrongQuestionRecord, PracticeRecord } from '../types/grammar';
 import { PointAccordionItem } from './PointAccordionItem';
 import { Layers } from 'lucide-react';
 
@@ -15,6 +15,10 @@ interface MacroViewProps {
   onAddWrongQuestion: (record: WrongQuestionRecord) => void;
   wrongQuestionIds: Set<string>;
   onRemoveWrongQuestion: (id: string) => void;
+  practiceRecords: Record<string, PracticeRecord>;
+  onRecordPractice: (record: PracticeRecord, source: string, pointName: string) => void;
+  onResetPractice: (questionId: string) => void;
+  highlightedQuestionId?: string | null;
 }
 
 export const MacroView: React.FC<MacroViewProps> = ({
@@ -28,13 +32,25 @@ export const MacroView: React.FC<MacroViewProps> = ({
   onAddWrongQuestion,
   wrongQuestionIds,
   onRemoveWrongQuestion,
+  practiceRecords,
+  onRecordPractice,
+  onResetPractice,
+  highlightedQuestionId,
 }) => {
   // Allow toggling macro category active subtab
   const [activeMacroTab, setActiveMacroTab] = useState<'all' | 'with_prompt' | 'without_prompt'>('all');
 
   // Filter function for search query & filter tags
   const filterPoint = (point: MicroPoint) => {
-    // Mastered & Wrong filter
+    // Practice & Wrong filter
+    if (selectedFilter === 'practiced') {
+      const hasDone = point.examples.some((ex) => !!practiceRecords[ex.id]);
+      if (!hasDone) return false;
+    }
+    if (selectedFilter === 'unpracticed') {
+      const hasUndone = point.examples.some((ex) => !practiceRecords[ex.id]);
+      if (!hasUndone) return false;
+    }
     if (selectedFilter === 'has_wrong') {
       const hasWrong = point.examples.some((ex) => wrongQuestionIds.has(ex.id));
       if (!hasWrong) return false;
@@ -199,6 +215,10 @@ export const MacroView: React.FC<MacroViewProps> = ({
                           onAddWrongQuestion={onAddWrongQuestion}
                           wrongQuestionIds={wrongQuestionIds}
                           onRemoveWrongQuestion={onRemoveWrongQuestion}
+                          practiceRecords={practiceRecords}
+                          onRecordPractice={onRecordPractice}
+                          onResetPractice={onResetPractice}
+                          highlightedQuestionId={highlightedQuestionId}
                         />
                       ))}
                     </div>
