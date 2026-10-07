@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Search,
   X,
@@ -13,7 +13,10 @@ import {
   ChevronsUpDown,
   BookMarked,
   Filter,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
+import { soundManager } from '../utils/soundEffects';
 import { EXAM_STATISTICS } from '../data/grammarData';
 
 interface HeaderProps {
@@ -51,6 +54,8 @@ export const Header: React.FC<HeaderProps> = ({
   masteredCount,
   wrongCount,
 }) => {
+  const [isSoundEnabled, setIsSoundEnabled] = useState(() => soundManager.isEnabled());
+
   return (
     <header className="space-y-5">
       {/* Top Banner */}
@@ -218,6 +223,30 @@ export const Header: React.FC<HeaderProps> = ({
               title="切换自测互动模式，隐藏答案供自己做题"
             >
               <span>{isQuizMode ? '🎯 自测模式（答案遮罩中）' : '📖 学习模式（答案解析展示）'}</span>
+            </button>
+
+            {/* Sound Effects Toggle */}
+            <button
+              onClick={() => {
+                const next = soundManager.toggle();
+                setIsSoundEnabled(next);
+                if (next) soundManager.playCorrect();
+              }}
+              className={`px-2.5 py-1.5 rounded-lg border font-medium flex items-center gap-1 transition-colors ${
+                isSoundEnabled
+                  ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-700 hover:text-slate-600'
+              }`}
+              title={isSoundEnabled ? '音效已开启（做对/做错实时音效），点击静音' : '音效已静音，点击开启'}
+            >
+              {isSoundEnabled ? (
+                <Volume2 className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+              ) : (
+                <VolumeX className="w-3.5 h-3.5 text-slate-400" />
+              )}
+              <span className="hidden sm:inline text-xs">
+                {isSoundEnabled ? '音效开' : '静音'}
+              </span>
             </button>
 
             {/* Accordion Fast Action */}

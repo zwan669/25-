@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { WrongQuestionRecord } from '../types/grammar';
+import { soundManager } from '../utils/soundEffects';
 import {
   X,
   BookOpen,
@@ -78,6 +79,17 @@ export const MistakesNotebookModal: React.FC<MistakesNotebookModalProps> = ({
       ...prev,
       [id]: val,
     }));
+  };
+
+  const handleCheckRedo = (id: string, actualAns: string) => {
+    const val = redoInputs[id]?.trim() || '';
+    if (!val) return;
+    const isCorrect = checkAnswerCorrect(val, actualAns);
+    if (isCorrect) {
+      soundManager.playCorrect();
+    } else {
+      soundManager.playIncorrect();
+    }
   };
 
   const toggleReveal = (id: string) => {
@@ -267,8 +279,21 @@ export const MistakesNotebookModal: React.FC<MistakesNotebookModalProps> = ({
                       }
                       value={currentRedo}
                       onChange={(e) => handleRedoChange(item.id, e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          handleCheckRedo(item.id, item.answer);
+                        }
+                      }}
                       className="px-3 py-1.5 text-xs sm:text-sm bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-500 max-w-xs"
                     />
+
+                    <button
+                      type="button"
+                      onClick={() => handleCheckRedo(item.id, item.answer)}
+                      className="px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-rose-500 text-white hover:bg-rose-600 shadow-xs"
+                    >
+                      核对
+                    </button>
 
                     <button
                       onClick={() => toggleReveal(item.id)}

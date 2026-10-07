@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { MicroPoint, WrongQuestionRecord } from '../types/grammar';
+import { soundManager } from '../utils/soundEffects';
 import {
   ChevronDown,
   AlertTriangle,
@@ -61,8 +62,12 @@ export const PointAccordionItem: React.FC<PointAccordionItemProps> = ({
     const userAns = userAnswers[exId]?.trim() || '';
     const isCorrect = isAnswerMatching(userAns, ex.answer);
 
-    // If answer is incorrect or empty when checking, automatically record to wrong questions notebook!
-    if (!isCorrect) {
+    // Play corresponding sound effect
+    if (isCorrect) {
+      soundManager.playCorrect();
+    } else {
+      soundManager.playIncorrect();
+      // If answer is incorrect or empty when checking, automatically record to wrong questions notebook!
       onAddWrongQuestion({
         id: ex.id,
         pointId: point.id,
